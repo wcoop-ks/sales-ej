@@ -28,11 +28,14 @@ sales-ej/
     │   └── sales-b.css     # サブレジ固有スタイル（現在空）
     ├── img/
     │   └── sales_logo_white.png
-    └── js/
-        ├── sales.js        # 共通UI・ページ操作・自動判定ロジック
-        ├── sales-207.js    # メインレジ固有パーサ（XE-A207）
-        ├── sales-147.js    # サブレジ固有パーサ（XE-A147）
-        └── export.js       # TXT / PDF / Excel 出力処理
+    ├── js/
+    │   ├── sales.js        # 共通UI・ページ操作・自動判定ロジック
+    │   ├── sales-207.js    # メインレジ固有パーサ（XE-A207）
+    │   ├── sales-147.js    # サブレジ固有パーサ（XE-A147）
+    │   └── export.js       # TXT / PDF / Excel 出力処理
+    └── test/
+        ├── 207-EJFILE.TXT  # 動作確認用 メインレジのジャーナル
+        └── 147-EJFILE.TXT  # 動作確認用 サブレジのジャーナル
 ```
 
 ## SDカードからのデータ取り出し方法
