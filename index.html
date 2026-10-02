@@ -20,7 +20,7 @@
                 <!-- アップロードフォーム -->
                 <div class="upload-form" id="upload-form-section">
                     <h2>ファイルアップロード</h2>
-                    <p class="instructions">EJFILE.TXTをアップロードしてください（メイン・サブ自動判定）</p>
+                    <p class="instructions">EJFILE.TXTをアップロードしてください（メイン・サブ自動判定、複数ファイル可）</p>
                     <p id="error-message" style="color:red; display:none;"></p>
 
                     <div class="form-group">
@@ -34,7 +34,7 @@
                             </div>
                             <div id="file-name-display" class="file-name"></div>
                         </div>
-                        <input type="file" id="journal_file" accept=".txt,.TXT,text/plain" style="display:none;">
+                        <input type="file" id="journal_file" accept=".txt,.TXT,text/plain" multiple style="display:none;">
                     </div>
 
                     <div class="date-inputs">

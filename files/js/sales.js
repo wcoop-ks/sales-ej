@@ -234,6 +234,58 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
+    // ---- 複数ファイルの結合 ----
+    // 途中でSD書き込みした日はジャーナルが複数ファイルに分かれる。
+    // 日付行ごとの取引ブロックに分け、日時+取引番号が同じブロックは1つにする
+    // （メインレジの「書込のみ」は後のファイルが前の内容を含むため、重なりを除く）。
+    // ファイルは先頭ブロックの日時が早い順に並べる。
+    function splitTransactionBlocks(content) {
+        const blocks = [];
+        let current  = null;
+
+        for (const line of content.split('\n')) {
+            const m = line.match(/(\d{4})年\s*(\d{1,2})月\s*(\d{1,2})日\s*(\d{1,2}):(\d{2})/);
+            if (m) {
+                current = {
+                    time:  m[1] + '-' + m[2].padStart(2, '0') + '-' + m[3].padStart(2, '0') +
+                           ' ' + m[4].padStart(2, '0') + ':' + m[5],
+                    lines: [line],
+                };
+                blocks.push(current);
+            } else if (current) {
+                current.lines.push(line);
+            }
+        }
+
+        for (const b of blocks) {
+            const txLine = b.lines.find(l => /^000000#\d+/.test(l.trim()));
+            b.key = txLine
+                ? b.time + ' ' + txLine.trim().match(/^000000#(\d+)/)[1]
+                : b.lines.join('\n');
+        }
+        return blocks;
+    }
+
+    function mergeJournalContents(contents) {
+        if (contents.length === 1) return contents[0];
+
+        const files = contents
+            .map(c => splitTransactionBlocks(c))
+            .filter(blocks => blocks.length > 0)
+            .sort((a, b) => a[0].time < b[0].time ? -1 : a[0].time > b[0].time ? 1 : 0);
+
+        const seen   = new Set();
+        const merged = [];
+        for (const blocks of files) {
+            for (const b of blocks) {
+                if (seen.has(b.key)) continue;
+                seen.add(b.key);
+                merged.push(b.lines.join('\n'));
+            }
+        }
+        return merged.join('\n');
+    }
+
     // ---- 数値フォーマット ----
     function numFmt(n) {
         return Number(n).toLocaleString('ja-JP');
@@ -493,18 +545,42 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     // ---- ファイル読み込み ----
-    function readAndAnalyze(file, startDate, endDate, endExplicit) {
-        const reader = new FileReader();
-        reader.onload = function (e) {
-            const utf8 = decodeFileContent(e.target.result);
+    function readFileAsArrayBuffer(file) {
+        return new Promise(function (resolve, reject) {
+            const reader = new FileReader();
+            reader.onload  = function (e) { resolve(e.target.result); };
+            reader.onerror = function () { reject(reader.error); };
+            reader.readAsArrayBuffer(file);
+        });
+    }
+
+    function readAndAnalyze(files, startDate, endDate, endExplicit) {
+        Promise.all(files.map(readFileAsArrayBuffer)).then(function (buffers) {
+            const contents = buffers.map(decodeFileContent);
+
+            // メイン/サブの混在チェック
+            const isMain = contents.map(c => /責任\d+/.test(c));
+            if (isMain.some(v => v !== isMain[0])) {
+                alert('メインレジとサブレジのファイルが混在しています。同じレジのファイルだけを選択してください。');
+                return;
+            }
+
+            const utf8 = mergeJournalContents(contents);
             detectAndSetSalesPage(utf8);
             clearJournalCache();
-            runAnalysis(utf8, file.name, startDate, endDate, endExplicit);
-        };
-        reader.onerror = function () {
+            runAnalysis(utf8, files.map(f => f.name).join(', '), startDate, endDate, endExplicit);
+        }).catch(function () {
             alert('ファイルの読み込みに失敗しました。');
-        };
-        reader.readAsArrayBuffer(file);
+        });
+    }
+
+    // ---- 選択ファイル名の表示 ----
+    function showSelectedFiles(files) {
+        const label = files.length === 1
+            ? escHtml(files[0].name)
+            : files.length + '件（' + files.map(f => escHtml(f.name)).join(', ') + '）';
+        fileNameDisplay.innerHTML = 'ファイル: ' + label + '<br>別のファイルをアップロード';
+        dropZoneText.classList.add('hidden');
     }
 
     // ---- エラー表示 ----
@@ -567,18 +643,17 @@ document.addEventListener('DOMContentLoaded', function () {
             e.preventDefault();
             e.stopPropagation();
             dropZone.classList.remove('dragover');
-            const files = e.dataTransfer.files;
+            const files = Array.from(e.dataTransfer.files);
             if (files.length > 0) {
-                const f = files[0];
-                if (f.name.toLowerCase().endsWith('.txt')) {
+                const txtFiles = files.filter(f => f.name.toLowerCase().endsWith('.txt'));
+                if (txtFiles.length === files.length) {
                     clearJournalCache();
                     try {
                         const dt = new DataTransfer();
-                        dt.items.add(f);
+                        txtFiles.forEach(f => dt.items.add(f));
                         fileInput.files = dt.files;
                     } catch (_) {}
-                    fileNameDisplay.innerHTML = 'ファイル: ' + escHtml(f.name) + '<br>別のファイルをアップロード';
-                    dropZoneText.classList.add('hidden');
+                    showSelectedFiles(txtFiles);
                 } else {
                     alert('.txtファイルのみアップロード可能です。');
                 }
@@ -590,8 +665,7 @@ document.addEventListener('DOMContentLoaded', function () {
         fileInput.addEventListener('change', function () {
             if (fileInput.files.length > 0) {
                 clearJournalCache();
-                fileNameDisplay.innerHTML = 'ファイル: ' + escHtml(fileInput.files[0].name) + '<br>別のファイルをアップロード';
-                dropZoneText.classList.add('hidden');
+                showSelectedFiles(Array.from(fileInput.files));
             } else {
                 fileNameDisplay.textContent = '';
                 dropZoneText.classList.remove('hidden');
@@ -618,7 +692,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
             document.activeElement.blur();
             if (!endExplicit) setDateInputs('end', startDate);
-            readAndAnalyze(fileInput.files[0], startDate, endDate, endExplicit);
+            readAndAnalyze(Array.from(fileInput.files), startDate, endDate, endExplicit);
         });
     }
 
