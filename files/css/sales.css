@@ -308,6 +308,43 @@ a.button:hover {
 .drop-zone-text.hidden {
     display: none;
 }
+.folder-button {
+    display: block;
+    width: 100%;
+    margin-top: 12px;
+    padding: 12px;
+    border: 1px solid #4CAF50;
+    border-radius: 8px;
+    background-color: #fff;
+    color: #4CAF50;
+    font-size: 16px;
+    cursor: pointer;
+}
+.folder-button:hover {
+    background-color: #f0f8f0;
+}
+.folder-hint {
+    margin-top: 6px;
+    font-size: 13px;
+    color: #999;
+}
+.reg-choice {
+    margin-top: 10px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    background-color: #f0f8f0;
+}
+.reg-choice-title {
+    display: block;
+    margin-bottom: 6px;
+    font-weight: bold;
+    color: #333;
+}
+.reg-choice-option {
+    display: block;
+    padding: 4px 0;
+    cursor: pointer;
+}
 
 .upload-form {
     display: block;

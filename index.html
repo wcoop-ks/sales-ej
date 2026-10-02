@@ -35,6 +35,12 @@
                             <div id="file-name-display" class="file-name"></div>
                         </div>
                         <input type="file" id="journal_file" accept=".txt,.TXT,text/plain" multiple style="display:none;">
+                        <button type="button" id="folder-button" class="folder-button">
+                            <i class="fa-solid fa-folder-open"></i> フォルダを選択
+                        </button>
+                        <p class="folder-hint">SDカードの SHARP フォルダ（または中の ECRXXX10 = メイン / ECRXXX15 = サブ）を選ぶと、EJFILE.TXT をまとめて読み込みます</p>
+                        <div id="reg-choice" class="reg-choice" style="display:none;"></div>
+                        <input type="file" id="journal_folder" webkitdirectory multiple style="display:none;">
                     </div>
 
                     <div class="date-inputs">

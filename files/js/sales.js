@@ -31,6 +31,14 @@ document.addEventListener('DOMContentLoaded', function () {
     const journalToggleButton     = document.getElementById('journal-toggle-button');
     const rerunToggleButton       = document.getElementById('rerun-toggle-button');
     const rerunDatePanel          = document.getElementById('rerun-date-panel');
+    const folderInput             = document.getElementById('journal_folder');
+    const folderButton            = document.getElementById('folder-button');
+    const regChoice               = document.getElementById('reg-choice');
+
+    // ---- 選択中のファイルと読み込み済みジャーナル ----
+    let selectedFiles  = [];
+    let selectedLabel  = '';
+    let currentJournal = null;
 
     // ---- 出力用データ保持 ----
     window.SalesExportData = {
@@ -75,6 +83,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function clearJournalCache() {
+        currentJournal = null;
         try {
             if (window.SalesPageMain) {
                 localStorage.removeItem(window.SalesPageMain.CACHE_CONTENT_KEY);
@@ -531,6 +540,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // ---- 分析実行 ----
     function runAnalysis(utf8Content, fileName, startDate, endDate, endExplicit) {
+        currentJournal = { content: utf8Content, fileName: fileName || '' };
         setJournalCache(utf8Content, fileName || '');
         const filtered = filterJournalByDate(utf8Content, startDate, endDate);
         const parsed   = window.SalesPage.parseJournalContent(utf8Content, startDate, endDate);
@@ -554,33 +564,162 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    function readAndAnalyze(files, startDate, endDate, endExplicit) {
+    function readAndAnalyze(files, label, startDate, endDate, endExplicit) {
         Promise.all(files.map(readFileAsArrayBuffer)).then(function (buffers) {
-            const contents = buffers.map(decodeFileContent);
+            // 取引が1件もないファイル（書き込み直後の空ファイルなど）は判定から外す
+            const contents = buffers.map(decodeFileContent)
+                .filter(c => /\d{4}年\s*\d{1,2}月\s*\d{1,2}日/.test(c));
+            if (contents.length === 0) {
+                alert('ジャーナルのデータが見つかりませんでした。');
+                return;
+            }
 
             // メイン/サブの混在チェック
             const isMain = contents.map(c => /責任\d+/.test(c));
             if (isMain.some(v => v !== isMain[0])) {
-                alert('メインレジとサブレジのファイルが混在しています。同じレジのファイルだけを選択してください。');
+                alert('メインレジとサブレジのファイルが混在しています。SDカードの ECRXXX10（メイン）か ECRXXX15（サブ）のどちらか一方を選択してください。');
                 return;
             }
 
             const utf8 = mergeJournalContents(contents);
             detectAndSetSalesPage(utf8);
             clearJournalCache();
-            runAnalysis(utf8, files.map(f => f.name).join(', '), startDate, endDate, endExplicit);
+            runAnalysis(utf8, label, startDate, endDate, endExplicit);
         }).catch(function () {
             alert('ファイルの読み込みに失敗しました。');
         });
     }
 
-    // ---- 選択ファイル名の表示 ----
-    function showSelectedFiles(files) {
-        const label = files.length === 1
-            ? escHtml(files[0].name)
-            : files.length + '件（' + files.map(f => escHtml(f.name)).join(', ') + '）';
-        fileNameDisplay.innerHTML = 'ファイル: ' + label + '<br>別のファイルをアップロード';
+    // ---- 読み込み対象の選別 ----
+    // フォルダ指定時は EJ/日付-n/EJFILE.TXT だけを拾う。
+    // EJPRINT（印刷用の写し）と Mac が作る ._ ファイルは除く。
+    function isJournalPath(path) {
+        const parts = path.split('/');
+        const name  = parts[parts.length - 1];
+        if (name.startsWith('._')) return false;
+        if (name.toUpperCase() !== 'EJFILE.TXT') return false;
+        return !parts.some(p => p.toUpperCase() === 'EJPRINT');
+    }
+
+    function isTxtFile(name) {
+        return name.toLowerCase().endsWith('.txt') && !name.startsWith('._');
+    }
+
+    // フォルダ名の表示用: 選択したフォルダ（パスの先頭）
+    function topFolderName(paths) {
+        const tops = new Set(paths.map(p => p.split('/')[0]));
+        return Array.from(tops).join(', ');
+    }
+
+    // ---- 選択の確定と表示 ----
+    function setSelectedFiles(files, label) {
+        clearJournalCache();
+        selectedFiles = files;
+        selectedLabel = label;
+        fileNameDisplay.innerHTML = escHtml(label) + '<br>別のファイルをアップロード';
         dropZoneText.classList.add('hidden');
+    }
+
+    function selectFiles(files) {
+        hideRegChoice();
+        const txtFiles = files.filter(f => isTxtFile(f.name));
+        if (txtFiles.length === 0) {
+            alert('.txtファイルのみアップロード可能です。');
+            return;
+        }
+        const label = txtFiles.length === 1
+            ? 'ファイル: ' + txtFiles[0].name
+            : 'ファイル: ' + txtFiles.length + '件（' + txtFiles.map(f => f.name).join(', ') + '）';
+        setSelectedFiles(txtFiles, label);
+    }
+
+    // SDカードの機種フォルダ: ECRXXX10 = メイン (XE-A207)、ECRXXX15 = サブ (XE-A147)
+    const MODEL_FOLDERS = [
+        { key: 'main', folder: 'ECRXXX10', label: 'メインレジ (XE-A207)' },
+        { key: 'sub',  folder: 'ECRXXX15', label: 'サブレジ (XE-A147)' },
+    ];
+
+    function modelOfPath(path) {
+        const parts = path.toUpperCase().split('/');
+        const m = MODEL_FOLDERS.find(mf => parts.includes(mf.folder));
+        return m ? m.key : null;
+    }
+
+    // items: [{ file, path }]（path はフォルダからの相対パス）
+    function selectFolderItems(items) {
+        hideRegChoice();
+        const journals = items.filter(it => isJournalPath(it.path));
+        if (journals.length === 0) {
+            alert('フォルダ内に EJFILE.TXT が見つかりません。SDカードの SHARP / ECRXXX10 / ECRXXX15 フォルダを選択してください。');
+            return;
+        }
+
+        // SHARP ごと選ばれた場合は機種フォルダで分け、どちらを分析するか選ばせる
+        const groups = MODEL_FOLDERS
+            .map(mf => Object.assign({}, mf, { items: journals.filter(it => modelOfPath(it.path) === mf.key) }))
+            .filter(g => g.items.length > 0);
+        if (groups.length > 1) {
+            showRegChoice(groups, topFolderName(journals.map(it => it.path)));
+            return;
+        }
+
+        const label = 'フォルダ: ' + topFolderName(journals.map(it => it.path)) +
+                      '（EJFILE.TXT ' + journals.length + '件）';
+        setSelectedFiles(journals.map(it => it.file), label);
+    }
+
+    // ---- メイン/サブの選択（SHARP フォルダごと選ばれたとき）----
+    function showRegChoice(groups, top) {
+        if (!regChoice) return;
+        regChoice.innerHTML = '<span class="reg-choice-title">分析するレジ</span>' + groups.map((g, i) =>
+            `<label class="reg-choice-option"><input type="radio" name="reg-choice" value="${i}"${i === 0 ? ' checked' : ''}> ` +
+            `${escHtml(g.label)}（${g.items.length}件）</label>`
+        ).join('');
+        regChoice.style.display = '';
+
+        function apply(i) {
+            const g = groups[i];
+            setSelectedFiles(g.items.map(it => it.file),
+                'フォルダ: ' + top + ' / ' + g.folder + '（EJFILE.TXT ' + g.items.length + '件）');
+        }
+        regChoice.querySelectorAll('input[name="reg-choice"]').forEach(function (radio) {
+            radio.addEventListener('change', function () { apply(Number(radio.value)); });
+        });
+        apply(0);
+    }
+
+    function hideRegChoice() {
+        if (!regChoice) return;
+        regChoice.innerHTML = '';
+        regChoice.style.display = 'none';
+    }
+
+    // ---- ドロップされたフォルダの展開 ----
+    function readAllEntries(dirReader) {
+        return new Promise(function (resolve, reject) {
+            const all = [];
+            (function next() {
+                dirReader.readEntries(function (entries) {
+                    if (entries.length === 0) { resolve(all); return; }
+                    all.push(...entries);
+                    next();
+                }, reject);
+            })();
+        });
+    }
+
+    function collectFromEntry(entry) {
+        if (entry.isFile) {
+            return new Promise(function (resolve, reject) {
+                entry.file(f => resolve([{ file: f, path: entry.fullPath.replace(/^\//, '') }]), reject);
+            });
+        }
+        if (entry.isDirectory) {
+            return readAllEntries(entry.createReader())
+                .then(entries => Promise.all(entries.map(collectFromEntry)))
+                .then(lists => [].concat(...lists));
+        }
+        return Promise.resolve([]);
     }
 
     // ---- エラー表示 ----
@@ -643,33 +782,40 @@ document.addEventListener('DOMContentLoaded', function () {
             e.preventDefault();
             e.stopPropagation();
             dropZone.classList.remove('dragover');
-            const files = Array.from(e.dataTransfer.files);
-            if (files.length > 0) {
-                const txtFiles = files.filter(f => f.name.toLowerCase().endsWith('.txt'));
-                if (txtFiles.length === files.length) {
-                    clearJournalCache();
-                    try {
-                        const dt = new DataTransfer();
-                        txtFiles.forEach(f => dt.items.add(f));
-                        fileInput.files = dt.files;
-                    } catch (_) {}
-                    showSelectedFiles(txtFiles);
-                } else {
-                    alert('.txtファイルのみアップロード可能です。');
-                }
+
+            // フォルダが含まれていれば中を辿る（エントリはイベント中に取得する必要がある）
+            const entries = Array.from(e.dataTransfer.items || [])
+                .map(it => it.webkitGetAsEntry ? it.webkitGetAsEntry() : null)
+                .filter(Boolean);
+            if (entries.some(en => en.isDirectory)) {
+                Promise.all(entries.map(collectFromEntry))
+                    .then(lists => selectFolderItems([].concat(...lists)))
+                    .catch(() => alert('フォルダの読み込みに失敗しました。'));
+                return;
             }
+
+            const files = Array.from(e.dataTransfer.files);
+            if (files.length > 0) selectFiles(files);
         });
     }
 
     if (fileInput) {
         fileInput.addEventListener('change', function () {
-            if (fileInput.files.length > 0) {
-                clearJournalCache();
-                showSelectedFiles(Array.from(fileInput.files));
-            } else {
-                fileNameDisplay.textContent = '';
-                dropZoneText.classList.remove('hidden');
-            }
+            if (fileInput.files.length > 0) selectFiles(Array.from(fileInput.files));
+            fileInput.value = '';
+        });
+    }
+
+    if (folderButton && folderInput) {
+        folderButton.addEventListener('click', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            folderInput.click();
+        });
+        folderInput.addEventListener('change', function () {
+            const files = Array.from(folderInput.files);
+            selectFolderItems(files.map(f => ({ file: f, path: f.webkitRelativePath || f.name })));
+            folderInput.value = '';
         });
     }
 
@@ -685,21 +831,22 @@ document.addEventListener('DOMContentLoaded', function () {
                 return;
             }
 
-            if (fileInput.files.length === 0) {
+            if (selectedFiles.length === 0) {
                 alert('ファイルが選択されていません。');
                 return;
             }
 
             document.activeElement.blur();
             if (!endExplicit) setDateInputs('end', startDate);
-            readAndAnalyze(Array.from(fileInput.files), startDate, endDate, endExplicit);
+            readAndAnalyze(selectedFiles, selectedLabel, startDate, endDate, endExplicit);
         });
     }
 
     // ---- 再計算ボタン ----
     if (rerunButton) {
         rerunButton.addEventListener('click', function () {
-            const cache = getJournalCache();
+            // 何か月分も読み込むと localStorage に入りきらないので、メモリー上の内容を優先する
+            const cache = currentJournal || getJournalCache();
             if (!cache.content) {
                 alert('保持されたファイル情報がありません。再度ファイルをアップロードしてください。');
                 return;
@@ -751,6 +898,10 @@ document.addEventListener('DOMContentLoaded', function () {
         if (resetButtonFixed) resetButtonFixed.classList.remove('visible');
 
         fileInput.value = '';
+        if (folderInput) folderInput.value = '';
+        selectedFiles = [];
+        selectedLabel = '';
+        hideRegChoice();
         fileNameDisplay.textContent = '';
         dropZoneText.classList.remove('hidden');
         clearJournalCache();
