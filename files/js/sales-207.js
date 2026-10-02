@@ -115,14 +115,14 @@ window.SalesPageMain = {
             if (dateStr) {
                 commitPending();
                 prevQuantityLine = null;
+                txHasPayment     = false;
+                txPaymentAmount  = 0;
 
                 if (startDate && dateStr < startDate) { currentDate = null; txSnapshot = null; continue; }
                 if (endDate   && dateStr > endDate)   { currentDate = null; txSnapshot = null; continue; }
 
                 currentDate     = dateStr;
                 currentTxDate   = dateStr;
-                txHasPayment    = false;
-                txPaymentAmount = 0;
                 snapshotStats();
                 continue;
             }
