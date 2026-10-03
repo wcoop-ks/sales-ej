@@ -908,3 +908,8 @@ a.button:hover {
         display: block;
     }
 }
+
+/* 一部入金後解除の訂正ヒント */
+.correction-full    { color: #2e7d32; font-weight: bold; }
+.correction-partial { color: #ef6c00; font-weight: bold; }
+.correction-none    { color: #c62828; font-weight: bold; }

@@ -44,6 +44,9 @@ window.SalesPageMain = {
         let currentTxDate    = null; // 現在のトランザクション日付
         let txHasPayment     = false; // 現在のトランザクションに入金があるか
         let txPaymentAmount  = 0;    // 現在のトランザクションの入金額
+        let txSeq            = 0;    // 範囲内トランザクションの通し番号（前後関係の判定用）
+        let txReturns        = [];   // 現在のトランザクションの戻品
+        const returns        = [];   // 確定した戻品（一部入金後解除の訂正ヒント用）
 
         // スペース区切り数字を正規化: "\ 6 , 6 0 0" / "\100" / "\\4,000" → 数値
         function parseSpacedAmount(str) {
@@ -119,6 +122,7 @@ window.SalesPageMain = {
                         date:    currentTxDate,
                         payment: txPaymentAmount,
                         items:   items,
+                        seq:     txSeq,
                     });
 
                     txSnapshot = null; // ロールバックせずスナップショットのみ破棄
@@ -126,6 +130,7 @@ window.SalesPageMain = {
                     // 通常の解除（入金なし・合計0）: 従来どおり開始時点にロールバック
                     pendingRecord = null;
                     rollbackStats();
+                    txReturns = [];
                 }
 
                 pendingRecord    = null;
@@ -143,12 +148,15 @@ window.SalesPageMain = {
                 prevQuantityLine = null;
                 txHasPayment     = false;
                 txPaymentAmount  = 0;
+                returns.push(...txReturns);
+                txReturns = [];
 
                 if (startDate && dateStr < startDate) { currentDate = null; txSnapshot = null; continue; }
                 if (endDate   && dateStr > endDate)   { currentDate = null; txSnapshot = null; continue; }
 
                 currentDate     = dateStr;
                 currentTxDate   = dateStr;
+                txSeq++;
                 snapshotStats();
                 continue;
             }
@@ -225,6 +233,10 @@ window.SalesPageMain = {
                 } else {
                     pendingRecord = { category, unitPrice: amount, quantity: -1 };
                 }
+                txReturns.push({
+                    seq: txSeq, date: currentDate, txNo: currentTxNo, category, amount,
+                    unitPrice: pendingRecord.unitPrice, qty: Math.abs(pendingRecord.quantity),
+                });
                 continue;
             }
 
@@ -280,7 +292,50 @@ window.SalesPageMain = {
         }
 
         commitPending();
+        returns.push(...txReturns);
+        attachCorrectionHints(cancelledWithPayment, returns);
         return { categoryStats, paymentStats, cancelledWithPayment, everRegistered };
+
+        // ---- 一部入金後解除の訂正ヒント ----
+        // 担当者が後で戻品して打ち消していることが多い。同じ日の戻品を時刻順に見て、
+        // それより前の「同じ分類・同じ単価」の解除会計へ、直前のものから順に個数を割り当てる
+        // （まとめて戻品した「60x -4」が複数の解除会計を打ち消す場合にも対応）。
+        // 単価まで見るのは、別の打ち間違いを戻した高額の戻品を誤って当てないため。
+        // 集計値は動かさず、警告に表示する手がかりだけを付ける。
+        function attachCorrectionHints(cancelled, returnList) {
+            const needs = []; // 解除会計の分類・単価ごとの未訂正個数
+            for (const tx of cancelled) {
+                tx.correction = { need: 0, covered: 0, returns: [] };
+                for (const it of tx.items || []) {
+                    if (it.qty <= 0) continue;
+                    needs.push({ tx, category: it.category, unitPrice: it.unitPrice, rest: it.qty });
+                    tx.correction.need += it.unitPrice * it.qty;
+                }
+            }
+
+            for (const r of returnList) {
+                let left = r.qty;
+                const targets = needs
+                    .filter(n => n.tx.date === r.date && n.tx.seq < r.seq && n.rest > 0 &&
+                                 n.category === r.category && n.unitPrice === r.unitPrice)
+                    .sort((a, b) => b.tx.seq - a.tx.seq);
+                for (const n of targets) {
+                    if (left <= 0) break;
+                    const use = Math.min(left, n.rest);
+                    n.rest -= use;
+                    left   -= use;
+                    n.tx.correction.covered += use * n.unitPrice;
+                    if (!n.tx.correction.returns.some(x => x.txNo === r.txNo)) {
+                        n.tx.correction.returns.push({ txNo: r.txNo, amount: r.amount });
+                    }
+                }
+            }
+
+            for (const tx of cancelled) {
+                const c = tx.correction;
+                c.status = c.covered === 0 ? 'none' : (c.covered >= c.need ? 'full' : 'partial');
+            }
+        }
     },
 };
 
