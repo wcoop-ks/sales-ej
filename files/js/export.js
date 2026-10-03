@@ -38,6 +38,10 @@ document.addEventListener('DOMContentLoaded', function () {
         return exportJournalCheck.checked && !exportJournalCheck.disabled;
     }
 
+    function creditLabel() {
+        return (window.SalesPage && window.SalesPage.CREDIT_LABEL) || 'クレジット';
+    }
+
     function getFilenameBase() {
         const d = window.SalesExportData;
         const parts = ['sales-ej'];
@@ -144,7 +148,7 @@ document.addEventListener('DOMContentLoaded', function () {
             }
             if (d.paymentStats.credit !== 0) {
                 lines.push(
-                    'クレジット'.padEnd(10) +
+                    creditLabel().padEnd(10) +
                     '        ' + '  ' +
                     String(numFmt(d.paymentStats.credit)).padStart(10)
                 );
@@ -208,7 +212,7 @@ document.addEventListener('DOMContentLoaded', function () {
         summaryAoa.push(['合計', totalQty, totalAmount]);
         if (d.paymentStats) {
             if (d.paymentStats.cash !== 0)   summaryAoa.push(['現金', '', d.paymentStats.cash]);
-            if (d.paymentStats.credit !== 0) summaryAoa.push(['クレジット', '', d.paymentStats.credit]);
+            if (d.paymentStats.credit !== 0) summaryAoa.push([creditLabel(), '', d.paymentStats.credit]);
         }
         const wsSummary = XLSX.utils.aoa_to_sheet(summaryAoa);
         XLSX.utils.book_append_sheet(wb, wsSummary, 'サマリー');

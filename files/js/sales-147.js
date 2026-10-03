@@ -20,13 +20,18 @@ window.SalesPageSub = {
 
     CATEGORY_ORDER: null,
 
+    // 信用売りキーの印字名（結果表・出力の行名に使う）
+    CREDIT_LABEL: '信用',
+
     SKIP_KEYWORDS: ['両替', '*SDカード*', '日計', '電子ジャーナル'],
 
     // ---- ジャーナル解析・集計（トランザクションバッファ方式）----
     parseJournalContent: function (content, startDate, endDate) {
         const SKIP_KEYWORDS = this.SKIP_KEYWORDS;
         const lines         = content.split('\n');
-        const categoryStats = {};
+        const categoryStats  = {};
+        const paymentStats   = { cash: 0, credit: 0 };
+        const everRegistered = new Set();
 
         let txLines = [];
         let txDate  = null;
@@ -37,10 +42,16 @@ window.SalesPageSub = {
             return m[1] + '-' + String(m[2]).padStart(2, '0') + '-' + String(m[3]).padStart(2, '0');
         }
 
+        // スペース区切り数字を正規化: "\ 5 , 5 0 0" / "- 3 3 0" → 数値
+        function parseSpacedAmount(str) {
+            return parseInt(str.replace(/[\s\\¥,]/g, ''), 10) || 0;
+        }
+
         function addToStats(category, price, qty) {
             if (!categoryStats[category]) categoryStats[category] = {};
             if (!categoryStats[category][price]) categoryStats[category][price] = 0;
             categoryStats[category][price] += qty;
+            everRegistered.add(category);
         }
 
         function commitTransaction(txLines) {
@@ -57,6 +68,14 @@ window.SalesPageSub = {
 
             for (let rawLine of txLines) {
                 const line = rawLine.trim();
+
+                // 支払い行（取引後訂正はマイナス）
+                const cashMatch   = line.match(/^現金\s+(.+)/);
+                const otsuriMatch = line.match(/^おつり\s+(.+)/);
+                const creditMatch = line.match(/^信用\s+(.+)/);
+                if (cashMatch)   { paymentStats.cash   += parseSpacedAmount(cashMatch[1])   * sign; continue; }
+                if (otsuriMatch) { paymentStats.cash   -= parseSpacedAmount(otsuriMatch[1]) * sign; continue; }
+                if (creditMatch) { paymentStats.credit += parseSpacedAmount(creditMatch[1]) * sign; continue; }
 
                 const qtyMatch = line.match(/^(\d+[,]?\d*)x\s*(\d+)/);
                 if (qtyMatch) {
@@ -141,7 +160,7 @@ window.SalesPageSub = {
         }
 
         commitTransaction(txLines);
-        return categoryStats;
+        return { categoryStats, paymentStats, everRegistered };
     },
 };
 

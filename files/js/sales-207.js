@@ -22,6 +22,9 @@ window.SalesPageMain = {
 
     CATEGORY_ORDER: ['グッズ', '井荻', '文具', 'パン', '飲料', '教科書', '副教材', '検定'],
 
+    // 信用売りキーの印字名（結果表・出力の行名に使う）
+    CREDIT_LABEL: 'クレジット',
+
     SKIP_KEYWORDS: ['両替', '*SDカード*', '日計', '電子ジャーナル'],
 
     // ---- ジャーナル解析・集計（pending record方式）----

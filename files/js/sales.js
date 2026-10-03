@@ -423,7 +423,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 </tr>`;
                 summaryRows += `<tr style="background-color:#e8f4fd;">
                     <td>—</td>
-                    <td class="amount">クレジット</td>
+                    <td class="amount">${escHtml(window.SalesPage.CREDIT_LABEL || 'クレジット')}</td>
                     <td class="amount">${numFmt(paymentStats.credit)}</td>
                 </tr>`;
             }
