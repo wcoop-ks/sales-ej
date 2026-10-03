@@ -693,6 +693,12 @@ a.button:hover {
     font-size: 13px;
     padding: 5px 10px;
 }
+/* 金額別（全部門）の注記 */
+.price-note {
+    margin-top: 8px;
+    font-size: 13px;
+    color: #999;
+}
 /* 日付・No.・金額は折り返さない */
 .warning-table th:nth-child(-n+3),
 .warning-table td:nth-child(-n+3) {

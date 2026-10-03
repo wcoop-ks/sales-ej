@@ -105,6 +105,15 @@ document.addEventListener('DOMContentLoaded', function () {
         return rows;
     }
 
+    // ---- 金額別データ構築（全部門横断。集計は sales.js と共通）----
+    function buildPriceData(analysisResult) {
+        return window.SalesPriceBreakdown.build(analysisResult, getSortedCategories(analysisResult));
+    }
+
+    function formatPriceParts(parts) {
+        return parts.map(pt => pt.category + ' ' + numFmt(pt.count)).join(' / ');
+    }
+
     // ---- TXT出力 ----
     function exportTxt() {
         const d = window.SalesExportData;
@@ -170,6 +179,19 @@ document.addEventListener('DOMContentLoaded', function () {
                     String(numFmt(r.subtotal)).padStart(10)
                 );
             }
+
+            lines.push('');
+            lines.push('【金額別（全部門）】');
+            lines.push('    金額    販売数        小計  内訳');
+            lines.push('─'.repeat(44));
+            for (const r of buildPriceData(d.analysisResult)) {
+                lines.push(
+                    String(numFmt(r.price)).padStart(8) + '  ' +
+                    String(numFmt(r.count)).padStart(8) + '  ' +
+                    String(numFmt(r.subtotal)).padStart(10) + '  ' +
+                    formatPriceParts(r.parts)
+                );
+            }
         }
 
         const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
@@ -180,10 +202,13 @@ document.addEventListener('DOMContentLoaded', function () {
     function exportPdf() {
         const detailTable   = document.querySelector('.detailTable');
         const detailHeading = document.querySelector('.detail-heading');
+        // 金額別も「詳細」の選択に従う
+        const priceParts    = document.querySelectorAll('.priceTable, .price-heading');
 
         if (!includeDetail()) {
             if (detailTable)   detailTable.classList.add('print-hide');
             if (detailHeading) detailHeading.classList.add('print-hide');
+            priceParts.forEach(el => el.classList.add('print-hide'));
         }
 
         const originalTitle = document.title;
@@ -194,6 +219,7 @@ document.addEventListener('DOMContentLoaded', function () {
         document.title = originalTitle;
         if (detailTable)   detailTable.classList.remove('print-hide');
         if (detailHeading) detailHeading.classList.remove('print-hide');
+        priceParts.forEach(el => el.classList.remove('print-hide'));
     }
 
     // ---- Excel出力 ----
@@ -226,6 +252,13 @@ document.addEventListener('DOMContentLoaded', function () {
             }
             const wsDetail = XLSX.utils.aoa_to_sheet(detailAoa);
             XLSX.utils.book_append_sheet(wb, wsDetail, '詳細');
+
+            const priceAoa = [['金額', '販売数', '小計', '内訳（部門 個数）']];
+            for (const r of buildPriceData(d.analysisResult)) {
+                priceAoa.push([r.price, r.count, r.subtotal, formatPriceParts(r.parts)]);
+            }
+            const wsPrice = XLSX.utils.aoa_to_sheet(priceAoa);
+            XLSX.utils.book_append_sheet(wb, wsPrice, '金額別');
         }
 
         // シート3: 電子ジャーナル（選択時）

@@ -482,6 +482,30 @@ document.addEventListener('DOMContentLoaded', function () {
         container.innerHTML = buildTimeBandMatrix(bands, categories) + buildTimeBandCards(bands, categories);
     }
 
+    // ---- 金額別（全部門横断）----
+    // パンは単価ではなく合計額で登録されるため、集計結果の販売数と同様に除外する
+    const PRICE_BREAKDOWN_EXCLUDE = ['パン'];
+
+    function buildPriceBreakdown(analysisResult, sortedCategories) {
+        const map = new Map();
+        for (const category of sortedCategories) {
+            if (PRICE_BREAKDOWN_EXCLUDE.includes(category)) continue;
+            for (const [p, count] of Object.entries(analysisResult[category])) {
+                if (count === 0) continue;
+                const price = Number(p);
+                if (!map.has(price)) map.set(price, { price, count: 0, parts: [] });
+                const row = map.get(price);
+                row.count += count;
+                row.parts.push({ category, count });
+            }
+        }
+        return Array.from(map.values())
+            .filter(r => r.count !== 0)
+            .sort((a, b) => b.price - a.price)
+            .map(r => Object.assign(r, { subtotal: r.price * r.count }));
+    }
+    window.SalesPriceBreakdown = { build: buildPriceBreakdown, exclude: PRICE_BREAKDOWN_EXCLUDE };
+
     // ---- 結果テーブル描画 ----
     function renderResults(analysisResult, paymentStats, cancelledWithPayment, everRegistered, startDate, endDate, filteredContent, endExplicit) {
         const CATEGORY_CLASS_MAP = getCategoryClassMap();
@@ -623,6 +647,32 @@ document.addEventListener('DOMContentLoaded', function () {
                 }
             }
 
+            // 金額別テーブル（全部門横断）
+            const priceRows = buildPriceBreakdown(analysisResult, sortedCategories);
+            let priceRowsHtml = '';
+            let priceTotalQty = 0, priceTotalAmount = 0;
+            for (const r of priceRows) {
+                priceTotalQty    += r.count;
+                priceTotalAmount += r.subtotal;
+                const parts = r.parts.map(pt => `${escHtml(pt.category)} ${numFmt(pt.count)}`).join(' / ');
+                priceRowsHtml += `<tr>
+                        <td class="amount">${numFmt(r.price)}</td>
+                        <td class="amount">${numFmt(r.count)}</td>
+                        <td class="amount">${numFmt(r.subtotal)}</td>
+                        <td>${parts}</td>
+                    </tr>`;
+            }
+            priceRowsHtml += `<tr style="font-weight:bold;background-color:#f0f0f0;">
+                    <td>合計</td>
+                    <td class="amount">${numFmt(priceTotalQty)}</td>
+                    <td class="amount">${numFmt(priceTotalAmount)}</td>
+                    <td></td>
+                </tr>`;
+            const excluded = sortedCategories.filter(c => PRICE_BREAKDOWN_EXCLUDE.includes(c));
+            const priceNote = excluded.length > 0
+                ? `<p class="price-note">${excluded.map(escHtml).join('・')}は単価ではなく合計額で登録されるため含みません。</p>`
+                : '';
+
             resultTables.innerHTML = `
                 <h3 class="summary-heading" style="margin-top:40px;">集計結果</h3>
                 <table class="summaryTable">
@@ -648,6 +698,20 @@ document.addEventListener('DOMContentLoaded', function () {
                     </thead>
                     <tbody>${detailRows}</tbody>
                 </table>
+
+                <h3 class="price-heading" style="margin-top:40px;">金額別（全部門）</h3>
+                <table class="priceTable">
+                    <thead>
+                        <tr>
+                            <th class="amount">金額</th>
+                            <th class="amount">販売数</th>
+                            <th class="amount">小計</th>
+                            <th>内訳（部門 個数）</th>
+                        </tr>
+                    </thead>
+                    <tbody>${priceRowsHtml}</tbody>
+                </table>
+                <div class="price-heading">${priceNote}</div>
             `;
         }
 
