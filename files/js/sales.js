@@ -667,7 +667,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 warningContainer.innerHTML = `
                     <div class="cancelled-payment-warning">
                         <p class="warning-title"><i class="fa-solid fa-triangle-exclamation"></i> 一部入金後に解除された会計があります</p>
-                        <p class="warning-desc">以下の会計は残額自動補填によりレジ日計に売上・入金として計上されています。同じ日のそれ以降に同じ分類・単価の戻品があれば「訂正」欄に表示します（自動判定のため目安です）。訂正がない会計は二重計上の可能性があるので確認してください。</p>
+                        <p class="warning-desc">以下の会計は残額自動補填によりレジ日計に売上・入金として計上されています。同じ日のそれ以降に同じ分類・単価の打ち消し（メインレジは戻品、サブレジは取引後訂正）があれば「訂正」欄に表示します（自動判定のため目安です）。訂正がない会計は二重計上の可能性があるので確認してください。</p>
                         <table class="warning-table">
                             <thead><tr><th>日付</th><th>No.</th><th class="amount">金額</th><th>内訳（分類・単価・個数）</th><th>訂正</th></tr></thead>
                             <tbody>${rows}</tbody>
@@ -906,13 +906,14 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     // ---- 解除会計の内訳（分類・単価・個数）を整形 ----
-    // ---- 解除会計の訂正ヒント（同じ日の戻品）を整形 ----
+    // ---- 解除会計の訂正ヒント（同じ日の戻品・取引後訂正）を整形 ----
     function formatCorrection(c) {
         if (!c) return '—';
-        const refs = c.returns.map(r => `#${escHtml(r.txNo || '')} 戻-${numFmt(r.amount)}`).join('<br>');
-        if (c.status === 'full')    return `<span class="correction-full">戻品で訂正済みの可能性</span><br>${refs}`;
-        if (c.status === 'partial') return `<span class="correction-partial">一部のみ戻品あり（¥${numFmt(c.covered)} / ¥${numFmt(c.need)}）</span><br>${refs}`;
-        return '<span class="correction-none">訂正なし（同じ日に該当する戻品なし）</span>';
+        const refs = c.returns.map(r =>
+            `#${escHtml(r.txNo || '')} ${escHtml(r.kind || '戻品')} -${numFmt(r.amount)}`).join('<br>');
+        if (c.status === 'full')    return `<span class="correction-full">訂正済みの可能性</span><br>${refs}`;
+        if (c.status === 'partial') return `<span class="correction-partial">一部のみ訂正あり（¥${numFmt(c.covered)} / ¥${numFmt(c.need)}）</span><br>${refs}`;
+        return '<span class="correction-none">訂正なし（同じ日に該当する打ち消しなし）</span>';
     }
 
     function formatCancelledItems(items) {
@@ -939,7 +940,7 @@ document.addEventListener('DOMContentLoaded', function () {
         ).join('');
 
         body.innerHTML = `
-            <p class="warning-desc">以下の会計は残額自動補填によりレジ日計に売上・入金として計上されています。同じ日のそれ以降に同じ分類・単価の戻品があれば「訂正」欄に表示します（自動判定のため目安です）。訂正がない会計は二重計上の可能性があるので確認してください。</p>
+            <p class="warning-desc">以下の会計は残額自動補填によりレジ日計に売上・入金として計上されています。同じ日のそれ以降に同じ分類・単価の打ち消し（メインレジは戻品、サブレジは取引後訂正）があれば「訂正」欄に表示します（自動判定のため目安です）。訂正がない会計は二重計上の可能性があるので確認してください。</p>
             <table class="warning-table">
                 <thead><tr><th>日付</th><th>No.</th><th class="amount">金額</th><th>内訳（分類・単価・個数）</th><th>訂正</th></tr></thead>
                 <tbody>${rows}</tbody>
