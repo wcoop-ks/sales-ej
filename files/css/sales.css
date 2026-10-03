@@ -516,6 +516,10 @@ a.button:hover {
     position: relative;
     text-align: left;
 }
+/* 警告ポップアップは表を載せるので広めに取る */
+.help-modal-inner.help-modal-wide {
+    max-width: 880px;
+}
 .help-close {
     position: absolute;
     top: 12px;
@@ -688,6 +692,11 @@ a.button:hover {
 .warning-table td {
     font-size: 13px;
     padding: 5px 10px;
+}
+/* 日付・No.・金額は折り返さない */
+.warning-table th:nth-child(-n+3),
+.warning-table td:nth-child(-n+3) {
+    white-space: nowrap;
 }
 
 /* ---- 印刷用CSS (PDF出力) ---- */
